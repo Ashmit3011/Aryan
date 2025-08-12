@@ -28,7 +28,8 @@ def require_login():
             if user:
                 st.session_state['user'] = dict(user)
                 st.success(f"Welcome, {user['username']}!")
-                st.experimental_rerun()
+                st.rerun()
             else:
                 st.error("Invalid credentials.")
         st.stop()
+
