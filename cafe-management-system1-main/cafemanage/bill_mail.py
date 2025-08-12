@@ -1,4 +1,3 @@
-# bill_mail.py
 import io
 import os
 import smtplib
@@ -20,16 +19,19 @@ SMTP_PASSWORD = "vufa rafh vzlz bgqv"
 FROM_EMAIL    = SMTP_USERNAME
 
 # ---------------------------------------------------------
-# Register DejaVu font (₹ supported)
+# Font registration (₹ support if possible)
 # ---------------------------------------------------------
-FONT_PATH = "dejavu-fonts-ttf-2.37/ttf/DejaVuSans.ttf"
+FONT_PATH = os.path.join(os.path.dirname(__file__), "dejavu-fonts-ttf-2.37", "ttf", "DejaVuSans.ttf")
+HAS_DEJAVU = False
+
 if os.path.exists(FONT_PATH):
     pdfmetrics.registerFont(TTFont("DejaVu", FONT_PATH))
+    HAS_DEJAVU = True
 else:
-    raise FileNotFoundError("DejaVuSans.ttf not found. Please check the FONT_PATH.")
+    print(f"[bill_mail.py] Warning: DejaVuSans.ttf not found at {FONT_PATH}. Using Helvetica instead.")
 
 def build_pdf(order_dict: dict) -> bytes:
-    """Generate a clean PDF bill with ₹ symbol support."""
+    """Generate a clean PDF bill, with ₹ support if available."""
     LEFT, RIGHT = 2 * cm, 17.5 * cm
     LINE_H = 0.55 * cm
 
@@ -61,9 +63,9 @@ def build_pdf(order_dict: dict) -> bytes:
     c.setFont("Helvetica-Bold", 9)
     c.drawString(LEFT, y, "Item")
     c.drawRightString(10 * cm, y, "Qty")
-    c.setFont("DejaVu", 9)
-    c.drawRightString(12.5 * cm, y, "Price (₹)")
-    c.drawRightString(17 * cm, y, "Subtotal (₹)")
+    c.setFont("DejaVu" if HAS_DEJAVU else "Helvetica", 9)
+    c.drawRightString(12.5 * cm, y, "Price (₹)" if HAS_DEJAVU else "Price")
+    c.drawRightString(17 * cm, y, "Subtotal (₹)" if HAS_DEJAVU else "Subtotal")
     c.setFont("Helvetica", 9)  # Reset for item rows
     y -= LINE_H
 
@@ -71,9 +73,11 @@ def build_pdf(order_dict: dict) -> bytes:
     for it in order_dict["items"]:
         c.drawString(LEFT, y, it["name"])
         c.drawRightString(10 * cm, y, str(it["quantity"]))
-        c.setFont("DejaVu", 9)
-        c.drawRightString(12.5 * cm, y, f"₹{it['price']:.2f}")
-        c.drawRightString(17 * cm, y, f"₹{it['subtotal']:.2f}")
+        c.setFont("DejaVu" if HAS_DEJAVU else "Helvetica", 9)
+        price_str = f"₹{it['price']:.2f}" if HAS_DEJAVU else f"{it['price']:.2f}"
+        subtotal_str = f"₹{it['subtotal']:.2f}" if HAS_DEJAVU else f"{it['subtotal']:.2f}"
+        c.drawRightString(12.5 * cm, y, price_str)
+        c.drawRightString(17 * cm, y, subtotal_str)
         c.setFont("Helvetica", 9)
         y -= LINE_H
 
@@ -89,8 +93,9 @@ def build_pdf(order_dict: dict) -> bytes:
     ]
     for label, value in totals:
         c.drawRightString(15 * cm, y, f"{label}:")
-        c.setFont("DejaVu", 10)
-        c.drawRightString(17 * cm, y, f"₹{value:.2f}")
+        c.setFont("DejaVu" if HAS_DEJAVU else "Helvetica", 10)
+        value_str = f"₹{value:.2f}" if HAS_DEJAVU else f"{value:.2f}"
+        c.drawRightString(17 * cm, y, value_str)
         c.setFont("Helvetica-Bold", 10)
         y -= LINE_H
 
