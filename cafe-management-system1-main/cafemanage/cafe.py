@@ -627,7 +627,6 @@ def main():
         "Order Management",
         "Sales Analytics",
         "Table Management",
-        "QR Code Generator",
         "Settings",
         "Logout"
     ]
@@ -635,7 +634,6 @@ def main():
         "Dashboard",
         "Order Management",
         "Table Management",
-        "QR Code Generator",
         "Logout"
     ]
 
@@ -671,8 +669,6 @@ def main():
             st.warning("Only admin can access sales analytics.")
     elif choice == "Table Management":
         table_management_page()
-    elif choice == "QR Code Generator":
-        qr_generator_page()
     elif choice == "Settings":
         if user['role'] == 'admin':
             settings_page()
@@ -685,6 +681,7 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
 
 
 
