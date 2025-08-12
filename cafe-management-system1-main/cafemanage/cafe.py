@@ -407,8 +407,8 @@ def order_management_page():
 
                     st.session_state.cart = []
                     st.rerun() 
-        else:
-            st.info("Add items to the cart from above menu.")
+                    else:
+                        st.info("Add items to the cart from above menu.")
 
     with tab2:
         st.subheader("Order History")
@@ -630,6 +630,7 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
 
 
 
