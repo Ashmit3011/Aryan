@@ -271,28 +271,58 @@ def menu_management_page():
                     save_json(MENU_FILE, menu_data)
                     st.success("Item deleted.")
                     st.rerun() 
+                    
 def table_management_page():
+    """
+    Automatically sync table status with orders:
+    – If there is at least one active order (Pending/Preparing/Ready) for a table
+      → mark the table Occupied.
+    – If no active order for that table
+      → mark it Available.
+    Manual override is still possible via the select-boxes.
+    """
     st.header("🪑 Table Management")
-    tables = load_json(TABLES_FILE) or []
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        st.write("Table Number")
-    with col2:
-        st.write("Status")
-    with col3:
-        st.write("Change Status")
 
-    status_options = ["Available", "Occupied", "Reserved"]
+    # --- load data ---
+    tables = load_json(TABLES_FILE) or []
+    orders = load_json(ORDERS_FILE) or []
+
+    # --- helper to find active orders for a table -----------------
+    def is_table_busy(tn: str) -> bool:
+        """Return True if table has any non-finished order."""
+        return any(
+            o.get("table_number") == tn
+            and o.get("status") in {"Pending", "Preparing", "Ready"}
+            for o in orders
+        )
+
+    # --- auto-update statuses -------------------------------------
     changed = False
-    for i, table in enumerate(tables):
+    for t in tables:
+        should_be = "Occupied" if is_table_busy(t["table_number"]) else "Available"
+        if t["status"] != should_be:
+            t["status"] = should_be
+            changed = True
+    if changed:
+        save_json(TABLES_FILE, tables)
+
+    # --- display & allow manual override --------------------------
+    status_options = ["Available", "Occupied", "Reserved"]
+    manual_change = False
+    for idx, table in enumerate(tables):
         col1, col2, col3 = st.columns([1, 2, 1])
         col1.write(table["table_number"])
         col2.write(table["status"])
-        new_status = col3.selectbox(f"Change status for Table {table['table_number']}", options=status_options, index=status_options.index(table["status"]), key=f"table_status_{table['table_number']}")
+        new_status = col3.selectbox(
+            "Change",
+            status_options,
+            index=status_options.index(table["status"]),
+            key=f"tbl_{table['table_number']}"
+        )
         if new_status != table["status"]:
-            tables[i]["status"] = new_status
-            changed = True
-    if changed:
+            tables[idx]["status"] = new_status
+            manual_change = True
+    if manual_change:
         save_json(TABLES_FILE, tables)
         st.success("Table statuses updated")
 
@@ -669,5 +699,6 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
 
 
