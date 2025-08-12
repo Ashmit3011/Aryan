@@ -332,61 +332,56 @@ def table_management_page():
 def order_management_page():
     st.header("Order Management")
 
-    # Status filter with unique key
+    # Filter dropdown with unique key
     status_filter = st.selectbox(
         "Filter by Status",
         ["All", "Pending", "Preparing", "Ready", "Completed", "Cancelled"],
-        key="status_filter_admin"
+        key="status_filter_selectbox"
     )
 
-    # Date filter with unique key
-    date_filter = st.date_input(
-        "Filter by Date",
-        key="date_filter_admin"
-    )
+    orders = load_orders()  # Your existing function to load orders
 
-    # Orders table
-    orders = load_orders()
-
-    # Apply filters
+    # Apply filter
     if status_filter != "All":
         orders = [o for o in orders if o["status"] == status_filter]
-    if date_filter:
-        orders = [o for o in orders if o["date"] == str(date_filter)]
 
-    st.subheader("Orders List")
+    if not orders:
+        st.info("No orders found.")
+        return
+
     for idx, order in enumerate(orders):
-        with st.expander(f"Order {order['id']} - {order['customer_name']}"):
-            st.write(f"**Table:** {order.get('table_number', 'N/A')}")
+        with st.expander(f"Order {order['id']} - {order['status']}", expanded=False):
+            st.write(f"**Customer:** {order['customer_name']}")
+            st.write(f"**Table:** {order.get('table_number', 'Take-away')}")
             st.write(f"**Date:** {order['date']} {order['time']}")
-            st.write(f"**Status:** {order['status']}")
+            st.write("**Items:**")
+            for item in order["items"]:
+                st.write(f"- {item['name']} x {item['quantity']} = ₹{item['subtotal']:.2f}")
 
-            # Status update with unique key per order
+            st.write(f"**Total:** ₹{order['total']:.2f}")
+
+            # Status update selectbox (unique key)
             new_status = st.selectbox(
                 "Update Status",
                 ["Pending", "Preparing", "Ready", "Completed", "Cancelled"],
                 index=["Pending", "Preparing", "Ready", "Completed", "Cancelled"].index(order["status"]),
                 key=f"status_update_{order['id']}"
             )
-            if st.button("Save Status", key=f"save_status_{order['id']}"):
+
+            if new_status != order["status"]:
                 order["status"] = new_status
                 save_orders(orders)
-                st.success("Status updated!")
-                st.experimental_rerun()
+                st.success(f"Order {order['id']} status updated to {new_status}")
 
-            # Generate and send bill
-            if st.button("Generate & Email Bill", key=f"bill_{order['id']}"):
-                from bill_mail import build_pdf, send_email
-                pdf_bytes = build_pdf(order)
-                send_email(order["customer_email"], order, pdf_bytes)
-                st.success("Bill emailed!")
-
-            # Delete order
-            if st.button("Delete Order", key=f"delete_{order['id']}"):
-                orders.remove(order)
-                save_orders(orders)
-                st.success("Order deleted!")
-                st.rerun()
+            # Generate & Email Bill button (unique key)
+            if st.button("Generate & Email Bill", key=f"bill_btn_{order['id']}"):
+                try:
+                    from bill_mail import build_pdf, send_email
+                    pdf_bytes = build_pdf(order)
+                    send_email(order.get("customer_email", ""), order, pdf_bytes)
+                    st.success("Bill emailed successfully!")
+                except Exception as e:
+                    st.error(f"Error generating or sending bill: {e}")
 
 
                     # === PDF & EMAIL BLOCK ===
@@ -635,6 +630,7 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
 
 
 
