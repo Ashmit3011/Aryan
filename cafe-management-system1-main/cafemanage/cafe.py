@@ -272,35 +272,69 @@ def menu_management_page():
                     st.success("Item deleted.")
                     st.rerun() 
 def table_management_page():
-    st.header("🪑 Table Management")
-    tables = load_json(TABLES_FILE) or []
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        st.write("Table Number")
-    with col2:
-        st.write("Status")
-    with col3:
-        st.write("Change Status")
+    st.header("🍽️ Table Management")
 
-    status_options = ["Available", "Occupied", "Reserved"]
-    changed = False
-    for i, table in enumerate(tables):
-        col1, col2, col3 = st.columns([1, 2, 1])
-        col1.write(table["table_number"])
-        col2.write(table["status"])
-        new_status = col3.selectbox(f"Change status for Table {table['table_number']}", options=status_options, index=status_options.index(table["status"]), key=f"table_status_{table['table_number']}")
+    tables_data = load_json(TABLES_FILE) or []
+    orders_data = load_json(ORDERS_FILE) or []
+
+    # Step 1: Automatically sync occupied status based on active orders
+    active_tables = set()
+    for order in orders_data:
+        if order.get("status") in ["Pending", "Preparing", "Ready"] and order.get("table_number"):
+            active_tables.add(order["table_number"])
+
+    for table in tables_data:
+        if table["table_number"] in active_tables:
+            table["status"] = "Occupied"
+        else:
+            # Only reset to "Available" if not Reserved manually
+            if table["status"] != "Reserved":
+                table["status"] = "Available"
+
+    save_json(TABLES_FILE, tables_data)
+
+    # Step 2: Display and allow manual changes
+    for idx, table in enumerate(tables_data):
+        col1, col2, col3 = st.columns([2, 2, 1])
+        col1.write(f"Table {table['table_number']}")
+        new_status = col2.selectbox(
+            "Status",
+            ["Available", "Occupied", "Reserved"],
+            index=["Available", "Occupied", "Reserved"].index(table["status"]),
+            key=f"status_{table['table_number']}"
+        )
         if new_status != table["status"]:
-            tables[i]["status"] = new_status
-            changed = True
-    if changed:
-        save_json(TABLES_FILE, tables)
-        st.success("Table statuses updated")
+            table["status"] = new_status
+            save_json(TABLES_FILE, tables_data)
+            st.success(f"Table {table['table_number']} updated to {new_status}")
+            st.rerun()
+
+        if col3.button("Delete", key=f"delete_{table['table_number']}"):
+            del tables_data[idx]
+            save_json(TABLES_FILE, tables_data)
+            st.warning(f"Table {table['table_number']} deleted.")
+            st.rerun()
+
+    st.write("---")
+    st.subheader("Add New Table")
+    new_table_number = st.text_input("Table Number")
+    if st.button("Add Table"):
+        if any(t["table_number"] == new_table_number for t in tables_data):
+            st.error("Table number already exists.")
+        elif not new_table_number.strip():
+            st.error("Table number cannot be empty.")
+        else:
+            tables_data.append({"table_number": new_table_number.strip(), "status": "Available"})
+            save_json(TABLES_FILE, tables_data)
+            st.success(f"Table {new_table_number} added.")
+            st.rerun()
 
 def order_management_page():
     st.header("🛒 Order Management")
     menu_data = load_json(MENU_FILE) or {"beverages": [], "food": []}
     orders_data = load_json(ORDERS_FILE) or []
     settings = load_json(SETTINGS_FILE) or {}
+    tables_data = load_json(TABLES_FILE) or []
 
     tab1, tab2 = st.tabs(["New Order", "Order History"])
 
@@ -311,7 +345,13 @@ def order_management_page():
         with col_left:
             customer_name = st.text_input("Customer Name")
         with col_mid:
-            table_number = st.text_input("Table Number (Optional)")
+            # Filter only available tables
+            available_tables = [t["table_number"] for t in tables_data if t["status"] == "Available"]
+            if available_tables:
+                table_number = st.selectbox("Select Table Number", [""] + available_tables)
+            else:
+                st.info("No available tables at the moment.")
+                table_number = ""
         with col_right:
             customer_email = st.text_input("Customer e-mail (for bill)")
 
@@ -347,7 +387,7 @@ def order_management_page():
                             }
                             st.session_state.cart.append(cart_item)
                             st.success(f"Added {qty}x {item['name']} to cart!")
-                            st.rerun() 
+                            st.rerun()
 
         st.subheader("Shopping Cart")
         if st.session_state.cart:
@@ -365,7 +405,7 @@ def order_management_page():
                 st.session_state.cart.pop(idx)
             total = sum(item['subtotal'] for item in st.session_state.cart)
 
-            discount = st.number_input("Discount ($)", min_value=0.0, max_value=total, value=st.session_state.discount, step=0.10)
+            discount = st.number_input("Discount (₹)", min_value=0.0, max_value=total, value=st.session_state.discount, step=0.10)
             st.session_state.discount = discount
 
             tax_rate = settings.get('tax_rate', 0.10)
@@ -421,7 +461,86 @@ def order_management_page():
                     orders_data.append(new_order)
                     save_json(ORDERS_FILE, orders_data)
 
+                    # Mark table as occupied
+                    if table_number.strip():
+                        for t in tables_data:
+                            if t["table_number"] == table_number:
+                                t["status"] = "Occupied"
+                        save_json(TABLES_FILE, tables_data)
+
                     st.success(f"Order placed! ID: {new_order['id']}")
+
+                    from bill_mail import build_pdf, send_email
+                    pdf_bytes = build_pdf(new_order)
+
+                    st.download_button(
+                        label="Download PDF Bill",
+                        data=pdf_bytes,
+                        file_name=f"{new_order['id']}.pdf",
+                        mime="application/pdf"
+                    )
+
+                    if customer_email.strip():
+                        try:
+                            send_email(customer_email.strip(), new_order, pdf_bytes)
+                            st.success(f"Bill e-mailed to {customer_email}")
+                        except Exception as e:
+                            st.error(f"Could not send e-mail: {e}")
+
+                    st.session_state.cart = []
+                    st.rerun()
+        else:
+            st.info("Add items to the cart from above menu.")
+
+    with tab2:
+        st.subheader("Order History")
+        orders_data = load_json(ORDERS_FILE) or []
+        if not orders_data:
+            st.info("No orders found.")
+            return
+        status_filter = st.selectbox("Filter by Status", ["All", "Pending", "Preparing", "Ready", "Completed", "Cancelled"])
+        date_filter = st.date_input("Filter by Date", value=None)
+
+        filtered_orders = orders_data
+        if status_filter != "All":
+            filtered_orders = [o for o in filtered_orders if o.get('status', '') == status_filter]
+        if date_filter:
+            filtered_orders = [o for o in filtered_orders if o.get('date', '') == str(date_filter)]
+
+        filtered_orders = sorted(filtered_orders, key=lambda o: o.get('timestamp', ''), reverse=True)
+
+        for order in filtered_orders:
+            with st.expander(f"Order {order['id']} by {order['customer_name']} (₹{order['total']:.2f}) - Status: {order.get('status', 'Pending')}"):
+                st.write(f"Date: {order['date']} Time: {order['time']}")
+                st.write(f"Table: {order.get('table_number', 'N/A')}")
+                st.write("Items:")
+                for i in order['items']:
+                    st.write(f"- {i['name']} x{i['quantity']} = ₹{i['subtotal']:.2f}")
+                st.write(f"Subtotal: ₹{order['subtotal']:.2f}")
+                st.write(f"Discount: ₹{order.get('discount', 0):.2f}")
+                st.write(f"Tax: ₹{order.get('tax', 0):.2f}")
+                st.write(f"Service Charge: ₹{order.get('service_charge', 0):.2f}")
+                st.write(f"Total: ₹{order['total']:.2f}")
+                payment_status = order.get('payment_status', 'Unpaid')
+                st.write(f"Payment Status: {payment_status}")
+
+                new_status = st.selectbox("Update Status", ["Pending", "Preparing", "Ready", "Completed", "Cancelled"], index=["Pending", "Preparing", "Ready", "Completed", "Cancelled"].index(order.get('status', 'Pending')),
+                                          key=f"status_{order['id']}")
+                if st.button("Update Status", key=f"update_{order['id']}"):
+                    for o in orders_data:
+                        if o['id'] == order['id']:
+                            o['status'] = new_status
+                            save_json(ORDERS_FILE, orders_data)
+
+                            # Free table if order completed
+                            if new_status == "Completed" and o.get("table_number"):
+                                for t in tables_data:
+                                    if t["table_number"] == o["table_number"]:
+                                        t["status"] = "Available"
+                                save_json(TABLES_FILE, tables_data)
+
+                            st.success(f"Order {order['id']} status updated to {new_status}")
+                            st.rerun()
 
                     # === PDF & EMAIL BLOCK ===
                     from bill_mail import build_pdf, send_email
@@ -669,6 +788,7 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
 
 
 
