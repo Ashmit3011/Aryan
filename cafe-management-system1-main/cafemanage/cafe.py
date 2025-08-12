@@ -1,4 +1,3 @@
-import streamlit as st
 import json
 import os
 from datetime import datetime, date
@@ -272,117 +271,156 @@ def menu_management_page():
                     st.success("Item deleted.")
                     st.rerun() 
 def table_management_page():
-    st.header("🍽️ Table Management")
+    st.header("🪑 Table Management")
+    tables = load_json(TABLES_FILE) or []
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        st.write("Table Number")
+    with col2:
+        st.write("Status")
+    with col3:
+        st.write("Change Status")
 
-    tables_data = load_json(TABLES_FILE) or []
-    orders_data = load_json(ORDERS_FILE) or []
-
-    # Step 1: Automatically sync occupied status based on active orders
-    active_tables = set()
-    for order in orders_data:
-        if order.get("status") in ["Pending", "Preparing", "Ready"] and order.get("table_number"):
-            active_tables.add(order["table_number"])
-
-    for table in tables_data:
-        if table["table_number"] in active_tables:
-            table["status"] = "Occupied"
-        else:
-            # Only reset to "Available" if not Reserved manually
-            if table["status"] != "Reserved":
-                table["status"] = "Available"
-
-    save_json(TABLES_FILE, tables_data)
-
-    # Step 2: Display and allow manual changes
-    for idx, table in enumerate(tables_data):
-        col1, col2, col3 = st.columns([2, 2, 1])
-        col1.write(f"Table {table['table_number']}")
-        new_status = col2.selectbox(
-            "Status",
-            ["Available", "Occupied", "Reserved"],
-            index=["Available", "Occupied", "Reserved"].index(table["status"]),
-            key=f"status_{table['table_number']}"
-        )
+    status_options = ["Available", "Occupied", "Reserved"]
+    changed = False
+    for i, table in enumerate(tables):
+        col1, col2, col3 = st.columns([1, 2, 1])
+        col1.write(table["table_number"])
+        col2.write(table["status"])
+        new_status = col3.selectbox(f"Change status for Table {table['table_number']}", options=status_options, index=status_options.index(table["status"]), key=f"table_status_{table['table_number']}")
         if new_status != table["status"]:
-            table["status"] = new_status
-            save_json(TABLES_FILE, tables_data)
-            st.success(f"Table {table['table_number']} updated to {new_status}")
-            st.rerun()
-
-        if col3.button("Delete", key=f"delete_{table['table_number']}"):
-            del tables_data[idx]
-            save_json(TABLES_FILE, tables_data)
-            st.warning(f"Table {table['table_number']} deleted.")
-            st.rerun()
-
-    st.write("---")
-    st.subheader("Add New Table")
-    new_table_number = st.text_input("Table Number")
-    if st.button("Add Table"):
-        if any(t["table_number"] == new_table_number for t in tables_data):
-            st.error("Table number already exists.")
-        elif not new_table_number.strip():
-            st.error("Table number cannot be empty.")
-        else:
-            tables_data.append({"table_number": new_table_number.strip(), "status": "Available"})
-            save_json(TABLES_FILE, tables_data)
-            st.success(f"Table {new_table_number} added.")
-            st.rerun()
+            tables[i]["status"] = new_status
+            changed = True
+    if changed:
+        save_json(TABLES_FILE, tables)
+        st.success("Table statuses updated")
 
 def order_management_page():
-    st.header("Order Management")
+    st.header("🛒 Order Management")
+    menu_data = load_json(MENU_FILE) or {"beverages": [], "food": []}
+    orders_data = load_json(ORDERS_FILE) or []
+    settings = load_json(SETTINGS_FILE) or {}
 
-    # Filter dropdown with unique key
-    status_filter = st.selectbox(
-        "Filter by Status",
-        ["All", "Pending", "Preparing", "Ready", "Completed", "Cancelled"],
-        key="status_filter_selectbox"
-    )
+    tab1, tab2 = st.tabs(["New Order", "Order History"])
 
-    orders = load_orders()  # Your existing function to load orders
+    with tab1:
+        st.subheader("Create New Order")
 
-    # Apply filter
-    if status_filter != "All":
-        orders = [o for o in orders if o["status"] == status_filter]
+        col_left, col_mid, col_right = st.columns(3)
+        with col_left:
+            customer_name = st.text_input("Customer Name")
+        with col_mid:
+            table_number = st.text_input("Table Number (Optional)")
+        with col_right:
+            customer_email = st.text_input("Customer e-mail (for bill)")
 
-    if not orders:
-        st.info("No orders found.")
-        return
+        st.write("### Menu Items")
+        all_items = []
+        for t_items in menu_data.values():
+            for itm in t_items:
+                if itm.get('available', True):
+                    all_items.append(itm)
 
-    for idx, order in enumerate(orders):
-        with st.expander(f"Order {order['id']} - {order['status']}", expanded=False):
-            st.write(f"**Customer:** {order['customer_name']}")
-            st.write(f"**Table:** {order.get('table_number', 'Take-away')}")
-            st.write(f"**Date:** {order['date']} {order['time']}")
-            st.write("**Items:**")
-            for item in order["items"]:
-                st.write(f"- {item['name']} x {item['quantity']} = ₹{item['subtotal']:.2f}")
+        for category in sorted(set(item["category"] for item in all_items)):
+            st.write(f"{category}")
+            for item in [x for x in all_items if x["category"] == category]:
+                col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                with col1:
+                    st.write(f"{item['name']} — {item.get('description', '')}")
+                with col2:
+                    st.write(f"₹{item['price']:.2f}")
+                with col3:
+                    qty = st.number_input(f"Qty {item['id']}", min_value=0, max_value=100, key=f"qty_{item['id']}")
+                with col4:
+                    add_pressed = st.button(f"Add to Cart {item['id']}", key=f"add_{item['id']}")
+                    if add_pressed and qty > 0:
+                        if item.get("inventory", 0) < qty:
+                            st.error(f"Insufficient inventory for {item['name']} (Available: {item.get('inventory', 0)})")
+                        else:
+                            cart_item = {
+                                'id': item['id'],
+                                'name': item['name'],
+                                'price': item['price'],
+                                'quantity': qty,
+                                'subtotal': round(item['price'] * qty, 2)
+                            }
+                            st.session_state.cart.append(cart_item)
+                            st.success(f"Added {qty}x {item['name']} to cart!")
+                            st.rerun() 
 
-            st.write(f"**Total:** ₹{order['total']:.2f}")
+        st.subheader("Shopping Cart")
+        if st.session_state.cart:
+            total = 0
+            to_remove = []
+            for idx, ci in enumerate(st.session_state.cart):
+                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                c1.write(ci['name'])
+                c2.write(f"₹{ci['price']:.2f}")
+                c3.write(f"x{ci['quantity']}")
+                c4.write(f"₹{ci['subtotal']:.2f}")
+                if c4.button("Remove", key=f"remove_{idx}"):
+                    to_remove.append(idx)
+            for idx in reversed(to_remove):
+                st.session_state.cart.pop(idx)
+            total = sum(item['subtotal'] for item in st.session_state.cart)
 
-            # Status update selectbox (unique key)
-            new_status = st.selectbox(
-                "Update Status",
-                ["Pending", "Preparing", "Ready", "Completed", "Cancelled"],
-                index=["Pending", "Preparing", "Ready", "Completed", "Cancelled"].index(order["status"]),
-                key=f"status_update_{order['id']}"
-            )
+            discount = st.number_input("Discount ($)", min_value=0.0, max_value=total, value=st.session_state.discount, step=0.10)
+            st.session_state.discount = discount
 
-            if new_status != order["status"]:
-                order["status"] = new_status
-                save_orders(orders)
-                st.success(f"Order {order['id']} status updated to {new_status}")
+            tax_rate = settings.get('tax_rate', 0.10)
+            service_charge = settings.get('service_charge', 0.05)
 
-            # Generate & Email Bill button (unique key)
-            if st.button("Generate & Email Bill", key=f"bill_btn_{order['id']}"):
-                try:
-                    from bill_mail import build_pdf, send_email
-                    pdf_bytes = build_pdf(order)
-                    send_email(order.get("customer_email", ""), order, pdf_bytes)
-                    st.success("Bill emailed successfully!")
-                except Exception as e:
-                    st.error(f"Error generating or sending bill: {e}")
+            tax_amt = (total - discount) * tax_rate
+            service_amt = (total - discount) * service_charge
+            final_total = total - discount + tax_amt + service_amt
 
+            st.write("---")
+            st.write(f"Subtotal: ₹{total:.2f}")
+            st.write(f"Discount: -₹{discount:.2f}")
+            st.write(f"Tax ({tax_rate*100:.0f}%): +₹{tax_amt:.2f}")
+            st.write(f"Service Charge ({service_charge*100:.0f}%): +₹{service_amt:.2f}")
+            st.write(f"*Total: ₹{final_total:.2f}*")
+
+            payment_status = st.selectbox("Payment Status", ["Unpaid", "Paid", "Partial"])
+
+            if st.button("Place Order"):
+                if not customer_name:
+                    st.error("Enter customer name")
+                elif len(st.session_state.cart) == 0:
+                    st.error("Cart is empty")
+                else:
+                    # inventory update
+                    for order_item in st.session_state.cart:
+                        for t in ["beverages", "food"]:
+                            for menu_item in menu_data.get(t, []):
+                                if menu_item["id"] == order_item["id"]:
+                                    if menu_item.get("inventory", 0) < order_item["quantity"]:
+                                        st.error(f"Not enough inventory for {menu_item['name']}")
+                                        return
+                                    else:
+                                        menu_item["inventory"] -= order_item["quantity"]
+                    save_json(MENU_FILE, menu_data)
+
+                    new_order = {
+                        "id": f"ORD{len(orders_data) + 1:05d}",
+                        "customer_name": customer_name,
+                        "table_number": table_number,
+                        "items": st.session_state.cart.copy(),
+                        "subtotal": total,
+                        "discount": discount,
+                        "tax": tax_amt,
+                        "service_charge": service_amt,
+                        "total": final_total,
+                        "date": str(date.today()),
+                        "time": datetime.now().strftime("%H:%M:%S"),
+                        "timestamp": datetime.now().isoformat(),
+                        "status": "Pending",
+                        "payment_status": payment_status
+                    }
+                    orders_data.append(new_order)
+                    save_json(ORDERS_FILE, orders_data)
+
+                    st.success(f"Order placed! ID: {new_order['id']}")
 
                     # === PDF & EMAIL BLOCK ===
                     from bill_mail import build_pdf, send_email
@@ -407,8 +445,8 @@ def order_management_page():
 
                     st.session_state.cart = []
                     st.rerun() 
-                    else:
-                        st.info("Add items to the cart from above menu.")
+        else:
+            st.info("Add items to the cart from above menu.")
 
     with tab2:
         st.subheader("Order History")
@@ -630,10 +668,3 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
-
-
-
-
-
-
-
