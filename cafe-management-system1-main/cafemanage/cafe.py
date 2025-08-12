@@ -676,7 +676,8 @@ def main():
 if _name_ == '_main_':
     if 'cart' not in st.session_state:
         st.session_state['cart'] = []
-    main()
+        main()
+
 
 
 
