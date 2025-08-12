@@ -681,3 +681,4 @@ if _name_ == '_main_':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
