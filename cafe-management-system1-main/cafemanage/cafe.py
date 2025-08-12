@@ -1,3 +1,4 @@
+import streamlit as st
 import json
 import os
 from datetime import datetime, date
@@ -220,7 +221,7 @@ def menu_management_page():
                     menu_data[item_type].append(new_item)
                     save_json(MENU_FILE, menu_data)
                     st.success(f"Added {item_name} to menu!")
-                    #st.rerun()
+                    #st.experimental_rerun()
                 else:
                     st.error("Please fill all fields.")
 
@@ -262,7 +263,7 @@ def menu_management_page():
                             })
                             save_json(MENU_FILE, menu_data)
                             st.success("Item updated.")
-                            st.rerun()
+                            st.experimental_rerun()
             with col2:
                 if st.form_submit_button("Delete Item"):
                     t = item["_type"]
@@ -637,7 +638,7 @@ def main():
         st.session_state['logged_in'] = False
         st.session_state['user'] = None
         st.session_state['cart'] = []
-        st.rerun()
+        st.experimental_rerun()
     elif choice == "Dashboard":
         dashboard_page()
     elif choice == "Menu Management":
@@ -668,3 +669,5 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
+
