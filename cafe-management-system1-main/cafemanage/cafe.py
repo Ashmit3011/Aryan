@@ -120,8 +120,6 @@ if 'user' not in st.session_state:
     st.session_state['user'] = None
 if 'cart' not in st.session_state:
     st.session_state['cart'] = []
-if 'discount' not in st.session_state:
-    st.session_state['discount'] = 0.0
 
 # --- Authentication Page ---
 
@@ -681,4 +679,5 @@ if _name_ == '_main_':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
 
