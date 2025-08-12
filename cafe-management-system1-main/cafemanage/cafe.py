@@ -393,19 +393,12 @@ def order_management_page():
                 st.session_state.cart.pop(idx)
             total = sum(item['subtotal'] for item in st.session_state.cart)
 
-            discount = st.number_input("Discount ($)", min_value=0.0, max_value=total, value=st.session_state.discount, step=0.10)
-            st.session_state.discount = discount
 
             tax_rate = settings.get('tax_rate', 0.10)
             service_charge = settings.get('service_charge', 0.05)
 
-            tax_amt = (total - discount) * tax_rate
-            service_amt = (total - discount) * service_charge
-            final_total = total - discount + tax_amt + service_amt
-
             st.write("---")
             st.write(f"Subtotal: ₹{total:.2f}")
-            st.write(f"Discount: -₹{discount:.2f}")
             st.write(f"Tax ({tax_rate*100:.0f}%): +₹{tax_amt:.2f}")
             st.write(f"Service Charge ({service_charge*100:.0f}%): +₹{service_amt:.2f}")
             st.write(f"Total: ₹{final_total:.2f}")
@@ -436,7 +429,6 @@ def order_management_page():
                         "table_number": table_number,
                         "items": st.session_state.cart.copy(),
                         "subtotal": total,
-                        "discount": discount,
                         "tax": tax_amt,
                         "service_charge": service_amt,
                         "total": final_total,
@@ -502,7 +494,6 @@ def order_management_page():
                 for i in order['items']:
                     st.write(f"- {i['name']} x{i['quantity']} = ₹{i['subtotal']:.2f}")
                 st.write(f"Subtotal: ₹{order['subtotal']:.2f}")
-                st.write(f"Discount: ₹{order.get('discount', 0):.2f}")
                 st.write(f"Tax: ₹{order.get('tax', 0):.2f}")
                 st.write(f"Service Charge: ₹{order.get('service_charge', 0):.2f}")
                 st.write(f"Total: ₹{order['total']:.2f}")
@@ -677,6 +668,7 @@ if __name__ == "__main__":
     if 'cart' not in st.session_state:
         st.session_state['cart'] = []
     main()
+
 
 
 
