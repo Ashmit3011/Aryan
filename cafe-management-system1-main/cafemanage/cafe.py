@@ -563,20 +563,6 @@ def sales_analytics_page():
     for item_name, qty in sorted(item_sales.items(), key=lambda x: x[1], reverse=True)[:10]:
         st.write(f"{item_name}: {qty} units sold")
 
-def qr_generator_page():
-    st.header("📱 QR Code Generator")
-    settings = load_json(SETTINGS_FILE) or {}
-    cafe_url = st.text_input("Cafe Menu URL", value=settings.get('barcode_url', 'https://mycafe.com/menu'))
-    if st.button("Generate QR Code"):
-        try:
-            qr_buffer = generate_menu_qr(cafe_url)
-            st.image(qr_buffer, caption="Menu QR Code", width=300)
-            qr_buffer.seek(0)
-            st.download_button("Download QR Code", qr_buffer.getvalue(), file_name="menu_qr_code.png", mime="image/png")
-            settings['barcode_url'] = cafe_url
-            save_json(SETTINGS_FILE, settings)
-        except Exception as e:
-            st.error(f"QR code generation failed: {e}")
 
 def settings_page():
     st.header("⚙ Settings")
@@ -699,6 +685,7 @@ if __name__ == '__main__':
     if 'discount' not in st.session_state:
         st.session_state['discount'] = 0.0
     main()
+
 
 
 
