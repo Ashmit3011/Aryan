@@ -402,7 +402,7 @@ def main():
 
     if choice=="Logout":
         st.session_state.clear()
-        st.experimental_rerun()
+        st.rerun()
     elif choice=="Dashboard":           dashboard_page()
     elif choice=="Menu Management":     menu_management_page()
     elif choice=="Order Management":    order_management_page()
@@ -412,3 +412,4 @@ def main():
 
 if __name__=="__main__":
     main()
+
