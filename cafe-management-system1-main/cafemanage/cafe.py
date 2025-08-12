@@ -344,93 +344,69 @@ def order_management_page():
             customer_email = st.text_input("Customer e-mail (for bill)")
 
         st.write("### Menu Items")
-        all_items = []
-        for t_items in menu_data.values():
-            for itm in t_items:
-                if itm.get('available', True):
-                    all_items.append(itm)
+        all_items = [it for cat in menu_data.values() for it in cat if it.get("available", True)]
 
-        for category in sorted(set(item["category"] for item in all_items)):
-            st.write(f"{category}")
-            for item in [x for x in all_items if x["category"] == category]:
-                col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
-                with col1:
-                    st.write(f"{item['name']} — {item.get('description', '')}")
-                with col2:
-                    st.write(f"₹{item['price']:.2f}")
-                with col3:
-                    qty = st.number_input(f"Qty {item['id']}", min_value=0, max_value=100, key=f"qty_{item['id']}")
-                with col4:
-                    add_pressed = st.button(f"Add to Cart {item['id']}", key=f"add_{item['id']}")
-                    if add_pressed and qty > 0:
-                        if item.get("inventory", 0) < qty:
-                            st.error(f"Insufficient inventory for {item['name']} (Available: {item.get('inventory', 0)})")
-                        else:
-                            cart_item = {
-                                'id': item['id'],
-                                'name': item['name'],
-                                'price': item['price'],
-                                'quantity': qty,
-                                'subtotal': round(item['price'] * qty, 2)
-                            }
-                            st.session_state.cart.append(cart_item)
-                            st.success(f"Added {qty}x {item['name']} to cart!")
-                            st.rerun() 
+        for cat in sorted({it["category"] for it in all_items}):
+            st.write(f"**{cat}**")
+            for item in [i for i in all_items if i["category"] == cat]:
+                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+                c1.write(f"{item['name']} — {item.get('description', '')}")
+                c2.write(f"₹{item['price']:.2f}")
+                qty = c3.number_input(f"Qty {item['id']}", 0, 100, key=f"qty_{item['id']}")
+                if c4.button("Add", key=f"add_{item['id']}") and qty > 0:
+                    if qty > item.get("inventory", 0):
+                        st.error(f"Only {item['inventory']} left of {item['name']}")
+                    else:
+                        st.session_state.cart.append({
+                            "id": item["id"], "name": item["name"],
+                            "price": item["price"], "quantity": qty,
+                            "subtotal": round(item["price"] * qty, 2)
+                        })
+                        st.success(f"Added {qty}x {item['name']} to cart!")
+                        st.rerun()
 
         st.subheader("Shopping Cart")
         if st.session_state.cart:
-            total = 0
-            to_remove = []
-            for idx, ci in enumerate(st.session_state.cart):
-                c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
-                c1.write(ci['name'])
-                c2.write(f"₹{ci['price']:.2f}")
-                c3.write(f"x{ci['quantity']}")
-                c4.write(f"₹{ci['subtotal']:.2f}")
-                if c4.button("Remove", key=f"remove_{idx}"):
-                    to_remove.append(idx)
-            for idx in reversed(to_remove):
-                st.session_state.cart.pop(idx)
-            total = sum(item['subtotal'] for item in st.session_state.cart)
+            total = sum(i["subtotal"] for i in st.session_state.cart)
+            tax_rate = settings.get("tax_rate", 0.10)
+            service_charge = settings.get("service_charge", 0.05)
 
+            tax_amt   = total * tax_rate
+            svc_amt   = total * service_charge
+            final_total = total + tax_amt + svc_amt
 
-            tax_rate = settings.get('tax_rate', 0.10)
-            service_charge = settings.get('service_charge', 0.05)
-
-            st.write("---")
             st.write(f"Subtotal: ₹{total:.2f}")
             st.write(f"Tax ({tax_rate*100:.0f}%): +₹{tax_amt:.2f}")
-            st.write(f"Service Charge ({service_charge*100:.0f}%): +₹{service_amt:.2f}")
-            st.write(f"Total: ₹{final_total:.2f}")
+            st.write(f"Service Charge ({service_charge*100:.0f}%): +₹{svc_amt:.2f}")
+            st.write(f"**Total: ₹{final_total:.2f}**")
 
             payment_status = st.selectbox("Payment Status", ["Unpaid", "Paid", "Partial"])
 
             if st.button("Place Order"):
                 if not customer_name:
                     st.error("Enter customer name")
-                elif len(st.session_state.cart) == 0:
+                elif not st.session_state.cart:
                     st.error("Cart is empty")
                 else:
                     # inventory update
-                    for order_item in st.session_state.cart:
-                        for t in ["beverages", "food"]:
-                            for menu_item in menu_data.get(t, []):
-                                if menu_item["id"] == order_item["id"]:
-                                    if menu_item.get("inventory", 0) < order_item["quantity"]:
-                                        st.error(f"Not enough inventory for {menu_item['name']}")
+                    for ci in st.session_state.cart:
+                        for cat in menu_data:
+                            for it in menu_data[cat]:
+                                if it["id"] == ci["id"]:
+                                    if ci["quantity"] > it.get("inventory", 0):
+                                        st.error(f"Not enough inventory for {it['name']}")
                                         return
-                                    else:
-                                        menu_item["inventory"] -= order_item["quantity"]
+                                    it["inventory"] -= ci["quantity"]
                     save_json(MENU_FILE, menu_data)
 
                     new_order = {
-                        "id": f"ORD{len(orders_data) + 1:05d}",
+                        "id": f"ORD{len(orders_data)+1:05d}",
                         "customer_name": customer_name,
                         "table_number": table_number,
                         "items": st.session_state.cart.copy(),
                         "subtotal": total,
                         "tax": tax_amt,
-                        "service_charge": service_amt,
+                        "service_charge": svc_amt,
                         "total": final_total,
                         "date": str(date.today()),
                         "time": datetime.now().strftime("%H:%M:%S"),
@@ -441,74 +417,51 @@ def order_management_page():
                     orders_data.append(new_order)
                     save_json(ORDERS_FILE, orders_data)
 
+                    st.balloons()
                     st.success(f"Order placed! ID: {new_order['id']}")
-
-                    # === PDF & EMAIL BLOCK ===
-                    from bill_mail import build_pdf, send_email
-                    pdf_bytes = build_pdf(new_order)
-
-                    # 1. Staff download
-                    st.download_button(
-                        label="Download PDF Bill",
-                        data=pdf_bytes,
-                        file_name=f"{new_order['id']}.pdf",
-                        mime="application/pdf"
-                    )
-
-                    # 2. Customer e-mail
-                    if customer_email.strip():
-                        try:
-                            send_email(customer_email.strip(), new_order, pdf_bytes)
-                            st.success(f"Bill e-mailed to {customer_email}")
-                        except Exception as e:
-                            st.error(f"Could not send e-mail: {e}")
-                    # === END PDF & EMAIL BLOCK ===
-
                     st.session_state.cart = []
-                    st.rerun() 
+                    st.rerun()
         else:
             st.info("Add items to the cart from above menu.")
 
     with tab2:
         st.subheader("Order History")
-        orders_data = load_json(ORDERS_FILE) or []
-        if not orders_data:
-            st.info("No orders found.")
+        orders = load_json(ORDERS_FILE) or []
+        if not orders:
+            st.info("No orders found")
             return
+
         status_filter = st.selectbox("Filter by Status", ["All", "Pending", "Preparing", "Ready", "Completed", "Cancelled"])
-        date_filter = st.date_input("Filter by Date", value=None)
+        date_filter = st.date_input("Filter by Date", None)
 
-        filtered_orders = orders_data
+        filt = orders
         if status_filter != "All":
-            filtered_orders = [o for o in filtered_orders if o.get('status', '') == status_filter]
+            filt = [o for o in filt if o.get("status") == status_filter]
         if date_filter:
-            filtered_orders = [o for o in filtered_orders if o.get('date', '') == str(date_filter)]
+            filt = [o for o in filt if o.get("date") == str(date_filter)]
+        filt = sorted(filt, key=lambda x: x["timestamp"], reverse=True)
 
-        filtered_orders = sorted(filtered_orders, key=lambda o: o.get('timestamp', ''), reverse=True)
-
-        for order in filtered_orders:
-            with st.expander(f"Order {order['id']} by {order['customer_name']} (₹{order['total']:.2f}) - Status: {order.get('status', 'Pending')}"):
-                st.write(f"Date: {order['date']} Time: {order['time']}")
-                st.write(f"Table: {order.get('table_number', 'N/A')}")
-                st.write("Items:")
-                for i in order['items']:
-                    st.write(f"- {i['name']} x{i['quantity']} = ₹{i['subtotal']:.2f}")
+        for order in filt:
+            with st.expander(f"{order['id']} by {order['customer_name']} — ₹{order['total']:.2f} ({order.get('status')})"):
+                st.write(f"Date: {order['date']} {order['time']} | Table: {order.get('table_number', '-')}")
+                for it in order["items"]:
+                    st.write(f"- {it['name']} x{it['quantity']} = ₹{it['subtotal']:.2f}")
                 st.write(f"Subtotal: ₹{order['subtotal']:.2f}")
                 st.write(f"Tax: ₹{order.get('tax', 0):.2f}")
                 st.write(f"Service Charge: ₹{order.get('service_charge', 0):.2f}")
-                st.write(f"Total: ₹{order['total']:.2f}")
-                payment_status = order.get('payment_status', 'Unpaid')
-                st.write(f"Payment Status: {payment_status}")
+                st.write(f"**Total: ₹{order['total']:.2f}**")
+                st.write(f"Payment: {order.get('payment_status', 'Unpaid')}")
 
-                new_status = st.selectbox("Update Status", ["Pending", "Preparing", "Ready", "Completed", "Cancelled"], index=["Pending", "Preparing", "Ready", "Completed", "Cancelled"].index(order.get('status', 'Pending')),
+                new_status = st.selectbox("Update Status", ["Pending", "Preparing", "Ready", "Completed", "Cancelled"],
+                                          index=["Pending", "Preparing", "Ready", "Completed", "Cancelled"].index(order.get("status", "Pending")),
                                           key=f"status_{order['id']}")
-                if st.button("Update Status", key=f"update_{order['id']}"):
-                    for o in orders_data:
-                        if o['id'] == order['id']:
-                            o['status'] = new_status
-                            save_json(ORDERS_FILE, orders_data)
-                            st.success(f"Order {order['id']} status updated to {new_status}")
-                            st.rerun() 
+                if st.button("Update", key=f"upd_{order['id']}"):
+                    for o in orders:
+                        if o["id"] == order["id"]:
+                            o["status"] = new_status
+                            save_json(ORDERS_FILE, orders)
+                            st.success("Status updated")
+                            st.rerun()
                     
 def sales_analytics_page():
     st.header("📊 Sales Analytics")
@@ -668,6 +621,7 @@ if __name__ == "__main__":
     if 'cart' not in st.session_state:
         st.session_state['cart'] = []
     main()
+
 
 
 
