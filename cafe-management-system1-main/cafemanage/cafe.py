@@ -272,33 +272,27 @@ def menu_management_page():
                     
 # ---------- FULL REPLACEMENT: table_management_page() ----------
 def table_management_page():
-    """
-    Real-time table status:
-    - A table is Busy when at least one order (Pending/Preparing/Ready) uses it
-    - Automatically refreshed when orders change
-    - No manual override needed – purely read-only live dashboard
-    """
     st.header("🪑 Live Table Status")
 
-    # helper -------------------------------------------------------------
-    def refresh_table_status():
+    def is_table_busy(tn: str) -> bool:
         orders = load_json(ORDERS_FILE) or []
-        busy = {o.get("table_number") for o in orders
-                if o.get("table_number") and o.get("status") in {"Pending", "Preparing", "Ready"}}
-        tables = [{"table_number": str(i), "status": ("Busy" if str(i) in busy else "Available")}
-                  for i in range(1, 11)]
-        save_json(TABLES_FILE, tables)
-        return tables
+        return any(
+            o.get("table_number") == tn
+            and o.get("status") in {"Pending", "Preparing", "Ready"}
+            for o in orders
+        )
 
-    # always refresh before rendering -------------------------------------
-    tables = refresh_table_status()
+    # refresh status
+    tables = [{"table_number": str(i),
+               "status": "Busy" if is_table_busy(str(i)) else "Available"}
+              for i in range(1, 11)]
+    save_json(TABLES_FILE, tables)
 
-    # display -------------------------------------------------------------
+    # display
     for t in tables:
         col1, col2 = st.columns(2)
         col1.write(t["table_number"])
         col2.write(t["status"])
-
     # --- auto-update statuses -------------------------------------
     changed = False
     for t in tables:
@@ -639,6 +633,7 @@ if __name__ == "__main__":
     if 'cart' not in st.session_state:
         st.session_state['cart'] = []
     main()
+
 
 
 
