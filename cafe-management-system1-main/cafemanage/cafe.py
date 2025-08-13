@@ -343,10 +343,23 @@ def order_management_page():
         col_left, col_mid, col_right = st.columns(3)
         with col_left:
             customer_name = st.text_input("Customer Name")
-        with col_mid:
-            table_number = st.text_input("Table Number (Optional)")
         with col_right:
             customer_email = st.text_input("Customer e-mail (for bill)")
+
+        # ---------- LIVE TABLE CHECK ----------
+        busy = {o.get("table_number") for o in orders_data
+                if o.get("table_number") and o.get("status") in {"Pending", "Preparing", "Ready"}}
+        free = [str(i) for i in range(1, 11) if str(i) not in busy]
+
+        if free:
+            table_number = col_mid.selectbox("Table Number", ["No table"] + free)
+            if table_number != "No table" and table_number in busy:
+                st.error(f"⚠️ Table {table_number} is currently busy.")
+                table_number = "No table"
+        else:
+            st.warning("⚠️ All tables are occupied.")
+            table_number = "No table"
+        # --------------------------------------
 
         st.write("### Menu Items")
         all_items = [it for cat in menu_data.values() for it in cat if it.get("available", True)]
@@ -407,7 +420,7 @@ def order_management_page():
                     new_order = {
                         "id": f"ORD{len(orders_data)+1:05d}",
                         "customer_name": customer_name,
-                        "table_number": table_number,
+                        "table_number": table_number if table_number != "No table" else "",
                         "items": st.session_state.cart.copy(),
                         "subtotal": total,
                         "tax": tax_amt,
@@ -626,6 +639,7 @@ if __name__ == "__main__":
     if 'cart' not in st.session_state:
         st.session_state['cart'] = []
     main()
+
 
 
 
